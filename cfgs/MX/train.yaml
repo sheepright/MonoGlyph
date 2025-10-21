@@ -1,0 +1,13 @@
+decomposition: data/kor/decomposition.json   # path to the "decomposition rule" file.
+primals: data/kor/primals.json   # path to the "primals" file.
+
+max_iter: 60000
+
+trainer:
+  resume:
+  work_dir: ./result/mx   # the directory to save checkpoints, validation images, and the log.
+  val_freq: 10000
+  save_freq: 10000
+  
+gen:
+  n_experts: 6

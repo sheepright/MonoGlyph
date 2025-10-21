@@ -1,0 +1,48 @@
+seed: 2
+model: mx
+
+# Decomposition rule
+decomposition:
+primals:
+
+max_iter: 800000    # 최대 iteration 수
+g_lr: 2e-4
+d_lr: 1e-3
+ac_lr: 2e-4
+adam_betas: [0.0, 0.9]
+
+trainer:
+  resume:            # (비워짐): 체크포인트로부터 resume 하지 않음
+  force_resume: False
+  work_dir: ./result/mx      # 결과 저장 위치 → 여기에 로그, 이미지, 모델 가중치 등 저장됨
+
+  # Losses
+  pixel_loss_type: l1        # 픽셀 손실은 L1 Loss 사용
+  pixel_w: 0.1               # 픽셀 손실 가중치
+  gan_w: 1.0                 # GAN 손실 가중치
+  fm_layers: all             # feature matching에 모든 layer 사용
+  fm_w: 1.0
+  ac_w: 1.0                  # auxiliary classifier 손실 가중치
+  ac_gen_w: 1.0
+  ac_cross_w: 0.0
+  indp_exp_w: 1.0            # expert 독립성 손실
+  indp_fact_w: 1.0
+
+  # Display
+  save: all-last             # 저장 방식: 전체 + 마지막
+  print_freq: 1000           # 로그 출력 빈도 (iter 단위)
+  val_freq: 10000            # validation 주기
+  save_freq: 50000           # 🔥모델 가중치 저장 주기 (여기서 문제가 발생했을 가능성 있음) + defult = 50000
+  tb_freq: 100               # tensorboard 주기
+
+gen:
+  n_experts: 6
+  n_emb: 2
+  
+dset:
+  loader:
+    batch_size: 8
+    num_workers: 16
+  train:
+    n_in_s: 3
+    n_in_c: 3

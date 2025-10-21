@@ -1,0 +1,19 @@
+# 학습데이터
+data/kor/train
+data/kor/val
+
+# 가중치모델
+MonoGlyph_60000.pth
+
+# API Key
+.env
+
+# 테스트 데이터 파일 및 테스트 버전 코드
+test
+font_file
+font_test
+runs
+
+# ----
+__pycache__
+.vscode
