@@ -35,6 +35,13 @@ def now_tag() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
+def make_id(prefix: str) -> str:
+    """고유 ID 생성: prefix-YYYYmmddHHMMSSffffff-rand6hex"""
+    ts = datetime.now().strftime("%Y%m%d%H%M%S%f")
+    rand = os.urandom(3).hex()
+    return f"{prefix}-{ts}-{rand}"
+
+
 def iso6_now() -> str:
     """DATETIME(6)와 유사한 포맷(마이크로초) + 로컬 타임존 오프셋 포함"""
     return datetime.now().astimezone().isoformat(timespec="microseconds")
@@ -149,7 +156,7 @@ def main():
     # =========================
     run_id = f"run-{now_tag()}"
     db_prompts_row = {
-        "id": None,  # DB에서 upsert 후 채울 값
+        "id": make_id("prompt"),
         "name": original_prompt,
         "created_at": iso6_now(),
     }
@@ -214,8 +221,8 @@ def main():
     for p in imgs_gpt:
         rel = str(p.relative_to(work_dir)) if p.is_file() else str(p)
         db_gpt_api_images_rows.append({
-            "id": None,
-            "prompt_id": None,   # DB 적재 시 prompts.id로 채워 넣을 것
+            "id": make_id("gimg"),
+            "prompt_id": db_prompts_row["id"],
             "run_id": run_id,
             "file_path": rel.replace("/", "\\"),
             "created_at": now_for_imgs,
@@ -224,7 +231,7 @@ def main():
         # 실패 즉시 요약 저장
         db_runs_row = {
             "run_id": run_id,
-            "prompt_id": None,
+            "prompt_id": db_prompts_row["id"],
             "started_at": runs_started_at,
             "ended_at": iso6_now(),
             "total_duration_sec": dur_sec(runs_started_at, iso6_now()),
@@ -266,7 +273,7 @@ def main():
     if rc != 0:
         db_runs_row = {
             "run_id": run_id,
-            "prompt_id": None,
+            "prompt_id": db_prompts_row["id"],
             "started_at": runs_started_at,
             "ended_at": iso6_now(),
             "total_duration_sec": dur_sec(runs_started_at, iso6_now()),
@@ -308,7 +315,7 @@ def main():
     if rc != 0:
         db_runs_row = {
             "run_id": run_id,
-            "prompt_id": None,
+            "prompt_id": db_prompts_row["id"],
             "started_at": runs_started_at,
             "ended_at": iso6_now(),
             "total_duration_sec": dur_sec(runs_started_at, iso6_now()),
@@ -403,7 +410,7 @@ def main():
             # 실패 요약 저장 후 종료
             db_runs_row = {
                 "run_id": run_id,
-                "prompt_id": None,
+                "prompt_id": db_prompts_row["id"],
                 "started_at": runs_started_at,
                 "ended_at": iso6_now(),
                 "total_duration_sec": dur_sec(runs_started_at, iso6_now()),
@@ -424,7 +431,7 @@ def main():
     runs_ended_at = iso6_now()
     db_runs_row = {
         "run_id": run_id,
-        "prompt_id": None,  # DB 적재 시 prompts.id로 채울 것
+        "prompt_id": db_prompts_row["id"],
         "started_at": runs_started_at,
         "ended_at": runs_ended_at,
         "total_duration_sec": dur_sec(runs_started_at, runs_ended_at),
