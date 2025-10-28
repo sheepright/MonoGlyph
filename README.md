@@ -216,7 +216,7 @@ MonoGlyph는 4단계 파이프라인으로 구성됩니다:
 웹 인터페이스를 통해 폰트를 생성하려면:
 
 ```bash
-uvicorn server:app --host 0.0.0.0 --port 8000 --proxy-headers --log-level info
+uvicorn server:app --host 0.0.0.0 --port 8000
 ```
 
 서버 실행 후 `http://localhost:8000`에서 웹 인터페이스 사용 가능합니다.
