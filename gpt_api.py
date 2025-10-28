@@ -146,6 +146,10 @@ def main():
     parser.add_argument("--quality", type=str, default=DEFAULT_QUALITY,
                         choices=["low", "standard", "hd"],
                         help=f"생성 품질 (기본: {DEFAULT_QUALITY}, low 미지원 시 자동 standard 폴백)")
+    parser.add_argument("--transparent", action="store_true",
+                        help="가능 시 투명 배경 요청(background='transparent')")
+    parser.add_argument("--delay", type=float, default=DEFAULT_DELAY,
+                        help="요청 간 대기(초), 레이트리밋 회피용")
     args = parser.parse_args()
 
     # API 키 로드 (.env/환경변수)

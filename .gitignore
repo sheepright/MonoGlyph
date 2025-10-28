@@ -21,3 +21,4 @@ __pycache__/
 
 # 폰트 생성파일들
 work-*/
+output*
