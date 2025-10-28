@@ -9,11 +9,16 @@ MonoGlyph_60000.pth
 .env
 
 # 테스트 데이터 파일 및 테스트 버전 코드
-test
-font_file
-font_test
-runs
+test/
+font_file/
+font_test/
+runs/
 
 # ----
-__pycache__
-.vscode
+__pycache__/
+.vscode/
+.venv/
+
+# 폰트 생성파일들
+work-*/
+output*
