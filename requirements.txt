@@ -2,6 +2,8 @@ annotated-types==0.7.0
 anyio==4.5.0
 asttokens==3.0.0
 backcall==0.2.0
+boto3==1.35.36
+botocore==1.35.36
 Brotli==1.0.9
 certifi==2024.8.30
 cffi==1.17.0
@@ -34,6 +36,7 @@ ipykernel==6.29.5
 ipython==8.12.2
 jedi==0.19.1
 Jinja2==3.1.4
+jmespath==1.0.1
 jupyter-client==8.6.3
 jupyter-core==5.8.1
 lazy-loader==0.4
@@ -72,6 +75,7 @@ requests==2.32.3
 rich==13.9.4
 ruamel.yaml==0.18.14
 ruamel.yaml.clib==0.2.8
+s3transfer==0.10.3
 scipy==1.10.1
 sconf==0.2.5
 shellingham==1.5.4

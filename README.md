@@ -108,15 +108,26 @@ sudo apt-get install imagemagick potrace
 
 ## ⚙️ 초기 설정
 
-### 1. OpenAI API 키 설정
+### 1. 환경 변수 설정
 
-프로젝트 루트에 `.env` 파일을 생성하고 API 키를 추가하세요:
+프로젝트 루트에 `.env` 파일을 생성하고 필요한 환경 변수를 추가하세요:
 
 ```env
 # .env 파일
+
+# OpenAI API 키 (필수)
 API_KEY=sk-your-openai-api-key-here
 # 또는
 OPENAI_API_KEY=sk-your-openai-api-key-here
+
+# AWS S3 설정 (API 서버 사용 시 필수)
+AWS_ACCESS_KEY_ID=your-aws-access-key-id
+AWS_SECRET_ACCESS_KEY=your-aws-secret-access-key
+S3_BUCKET_NAME=your-s3-bucket-name
+S3_REGION=ap-northeast-2
+
+# API 엔드포인트 (선택사항)
+API_ENDPOINT=https://your-api-endpoint.com
 ```
 
 ### 2. 모델 가중치 파일 준비
@@ -213,6 +224,8 @@ MonoGlyph는 4단계 파이프라인으로 구성됩니다:
 
 ## 🌐 API 서버 실행
 
+### 서버 시작
+
 웹 인터페이스를 통해 폰트를 생성하려면:
 
 ```bash
@@ -220,6 +233,70 @@ uvicorn server:app --host 0.0.0.0 --port 8000
 ```
 
 서버 실행 후 `http://localhost:8000`에서 웹 인터페이스 사용 가능합니다.
+
+### API 엔드포인트
+
+#### 1. 폰트 생성 (SSE 스트리밍)
+
+```bash
+POST /generate
+Content-Type: application/json
+
+{
+  "prompt": "붓글씨 스타일의 우아한 서예체"
+}
+```
+
+- 실시간 진행 상황을 Server-Sent Events(SSE)로 스트리밍
+- 진행 단계: init → gpt_api → preprocessing → inference → fontforge → complete
+- 완료 시 work 디렉토리명과 TTF 파일명 반환
+
+#### 2. TTF 파일 다운로드
+
+```bash
+GET /download/{work_dir}/{filename}
+```
+
+예시: `GET /download/work-20241101_123456/MonoGlyph.ttf`
+
+#### 3. 헬스체크
+
+```bash
+GET /health
+```
+
+### S3 통합 기능
+
+API 서버는 생성된 폰트와 이미지를 AWS S3에 자동으로 업로드합니다:
+
+#### S3 업로드 항목
+
+1. **스타일 이미지**: `font_imgs/` 디렉토리의 모든 PNG 파일
+2. **TTF 폰트 파일**: `output/` 디렉토리의 TTF 파일
+
+#### S3 구조
+
+```
+s3://your-bucket/
+└── work-YYYYMMDD_HHMMSS/
+    ├── font_imgs/
+    │   ├── 가.png
+    │   ├── 나.png
+    │   └── ...
+    └── output/
+        └── MonoGlyph.ttf
+```
+
+#### 데이터베이스 저장
+
+폰트 생성 완료 후 `run_summary.json`을 기반으로 다음 정보를 API 엔드포인트로 전송합니다:
+
+- 프롬프트 및 작업 디렉토리 정보
+- S3에 업로드된 이미지 URL 목록
+- TTF 파일의 S3 public URL
+- 생성 시간 및 각 단계별 실행 정보
+
+**참고**: S3 업로드 기능을 사용하려면 `.env` 파일에 AWS 자격 증명과 S3 버킷 정보를 설정해야 합니다.
 
 ## 📁 출력 구조
 
