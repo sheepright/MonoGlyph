@@ -7,13 +7,18 @@ import json
 import subprocess
 import shutil
 import time
+import requests
+import boto3
 from pathlib import Path
-from typing import Iterator, Optional, Dict, Any, Tuple
+from typing import Iterator, Optional, Dict, Any, Tuple, List
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+load_dotenv()
 
 app = FastAPI(title="MonoGlyph Font Generator", version="1.0.0")
 
@@ -28,6 +33,19 @@ app.add_middleware(
 
 # 메인 스크립트
 MAIN_SCRIPT = "main.py"
+
+# AWS S3 설정 (환경변수에서 읽기)
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
+S3_REGION = os.getenv("S3_REGION")
+API_ENDPOINT = os.getenv("API_ENDPOINT")
+
+# S3 클라이언트 초기화
+s3_client = boto3.client(
+    's3',
+    region_name=S3_REGION,
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
+)
 
 
 # ===== 요청 모델 =====
@@ -103,53 +121,164 @@ def find_latest_work_dir(since_time: float) -> Optional[Path]:
     return max(recent, key=lambda x: x.stat().st_mtime)
 
 
-# ===== DB 저장 함수 (주석 처리) =====
-# def save_to_database(work_dir: Path, prompt: str):
-#     """
-#     NoSQL DB에 결과 저장
-#     - work_dir 내의 run_summary.json 읽기
-#     - font_imgs 내의 이미지들을 base64로 인코딩
-#     - TTF 파일 경로
-#     - 프롬프트 정보
-#     """
-#     import base64
-#     
-#     summary_path = work_dir / "run_summary.json"
-#     if not summary_path.exists():
-#         return
-#     
-#     with open(summary_path, "r", encoding="utf-8") as f:
-#         summary = json.load(f)
-#     
-#     # 이미지 수집 (base64 인코딩)
-#     images = []
-#     font_imgs_dir = work_dir / "font_imgs"
-#     if font_imgs_dir.exists():
-#         for img_path in font_imgs_dir.rglob("*.png"):
-#             with open(img_path, "rb") as img_file:
-#                 img_b64 = base64.b64encode(img_file.read()).decode()
-#                 images.append({
-#                     "filename": img_path.name,
-#                     "data": img_b64
-#                 })
-#     
-#     # TTF 파일 경로
-#     ttf_path = find_latest_ttf(work_dir)
-#     
-#     # DB에 저장할 데이터 구조
-#     db_data = {
-#         "prompt": prompt,
-#         "work_dir": str(work_dir),
-#         "summary": summary,
-#         "images": images,
-#         "ttf_path": str(ttf_path) if ttf_path else None,
-#         "created_at": summary.get("runs", {}).get("started_at"),
-#     }
-#     
-#     # TODO: NoSQL DB에 저장
-#     # db.collection("fonts").insert_one(db_data)
-#     
-#     print(f"[DB] 저장 준비 완료: {len(images)}개 이미지, TTF: {ttf_path}")
+# ===== S3 업로드 함수 =====
+def upload_images_to_s3(work_dir: Path) -> List[Dict[str, str]]:
+    """
+    font_imgs 디렉토리의 이미지를 S3에 업로드하고 public URL 반환
+    S3 구조: work-*/font_imgs/*.png
+    """
+    uploaded_images = []
+    font_imgs_dir = work_dir / "font_imgs"
+    
+    if not font_imgs_dir.exists():
+        print(f"[S3] font_imgs 디렉토리가 없습니다: {font_imgs_dir}")
+        return uploaded_images
+    
+    for img_path in sorted(font_imgs_dir.rglob("*.png")):
+        try:
+            # S3 키 생성 (work-*/font_imgs/filename.png)
+            s3_key = f"{work_dir.name}/font_imgs/{img_path.name}"
+            
+            # S3에 업로드 (public-read 권한)
+            s3_client.upload_file(
+                str(img_path),
+                S3_BUCKET_NAME,
+                s3_key,
+                # ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'}
+                ExtraArgs={'ContentType': 'image/png'}
+            )
+            
+            # Public URL 생성
+            public_url = f"https://{S3_BUCKET_NAME}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+            
+            uploaded_images.append({
+                "filename": img_path.name,
+                "url": public_url,
+                "s3_key": s3_key
+            })
+            
+            print(f"[S3] 이미지 업로드 완료: {img_path.name} -> {public_url}")
+            
+        except Exception as e:
+            print(f"[S3] 이미지 업로드 실패 ({img_path.name}): {str(e)}")
+    
+    return uploaded_images
+
+
+def upload_ttf_to_s3(work_dir: Path, ttf_path: Path) -> Optional[str]:
+    """
+    TTF 파일을 S3에 업로드하고 public URL 반환
+    S3 구조: work-*/output/*.ttf
+    """
+    if not ttf_path or not ttf_path.exists():
+        print(f"[S3] TTF 파일이 없습니다: {ttf_path}")
+        return None
+    
+    try:
+        # S3 키 생성 (work-*/output/filename.ttf)
+        s3_key = f"{work_dir.name}/output/{ttf_path.name}"
+        
+        # S3에 업로드 (public-read 권한)
+        s3_client.upload_file(
+            str(ttf_path),
+            S3_BUCKET_NAME,
+            s3_key,
+            # ExtraArgs={'ACL': 'public-read', 'ContentType': 'font/ttf'}
+            ExtraArgs={'ContentType': 'font/ttf'}
+        )
+        
+        # Public URL 생성
+        public_url = f"https://{S3_BUCKET_NAME}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+        
+        print(f"[S3] TTF 업로드 완료: {ttf_path.name} -> {public_url}")
+        
+        return public_url
+        
+    except Exception as e:
+        print(f"[S3] TTF 업로드 실패 ({ttf_path.name}): {str(e)}")
+        return None
+
+
+# ===== DB 저장 함수 =====
+def save_to_database(work_dir: Path, prompt: str):
+    """
+    run_summary.json을 읽고 S3에 파일 업로드 후 URL을 추가하여 API로 전송
+    - font_imgs 이미지들을 S3에 업로드
+    - TTF 파일을 S3에 업로드
+    - font_output 경로를 S3 public URL로 변경
+    - gpt_api_images의 file_path를 S3 URL로 변경
+    - status 항목 삭제
+    - summary는 font_output만 남기고 나머지 삭제
+    """
+    summary_path = work_dir / "run_summary.json"
+    if not summary_path.exists():
+        print(f"[DB] run_summary.json이 없습니다: {summary_path}")
+        return
+    
+    try:
+        # run_summary.json 읽기
+        with open(summary_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        # S3에 이미지 업로드
+        uploaded_images = upload_images_to_s3(work_dir)
+        
+        # TTF 파일 찾기 및 S3 업로드
+        ttf_path = find_latest_ttf(work_dir)
+        ttf_public_url = None
+        if ttf_path:
+            ttf_public_url = upload_ttf_to_s3(work_dir, ttf_path)
+        
+        # status 항목 삭제
+        if "status" in data:
+            del data["status"]
+        
+        # summary 항목 정리 (ttf_output을 S3 URL로 변경)
+        if "summary" in data:
+            data["summary"] = {
+                "ttf_output": ttf_public_url if ttf_public_url else None
+            }
+        else:
+            data["summary"] = {
+                "ttf_output": ttf_public_url if ttf_public_url else None
+            }
+        
+        # gpt_api_images의 file_path를 S3 URL로 변경
+        if "gpt_api_images" in data and isinstance(data["gpt_api_images"], list):
+            # uploaded_images를 filename으로 매핑
+            url_map = {img["filename"]: img["url"] for img in uploaded_images}
+            
+            for img_item in data["gpt_api_images"]:
+                if "file_path" in img_item:
+                    # 파일명 추출 (예: "font_imgs\\...\\가.png" -> "가.png")
+                    filename = Path(img_item["file_path"]).name
+                    # S3 URL로 변경
+                    if filename in url_map:
+                        img_item["file_path"] = url_map[filename]
+        
+        # 추가 데이터
+        data["images"] = uploaded_images
+        data["prompt"] = prompt
+        data["work_dir"] = str(work_dir.name)
+        data["ttf_filename"] = ttf_path.name if ttf_path else None
+        
+        # API로 POST 요청
+        api_url = f"{API_ENDPOINT}/api/runs/ingest"
+        response = requests.post(
+            api_url,
+            json=data,
+            headers={"Content-Type": "application/json"},
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            print(f"[DB] API 저장 성공: {api_url}")
+            print(f"[DB] 이미지 {len(uploaded_images)}개, TTF URL: {ttf_public_url}")
+        else:
+            print(f"[DB] API 저장 실패 ({response.status_code}): {response.text}")
+    
+    except Exception as e:
+        print(f"[DB] 저장 중 오류 발생: {str(e)}")
 
 
 # ===== 메인 엔드포인트: 폰트 생성 (SSE 스트리밍) =====
@@ -253,8 +382,8 @@ async def generate_font(request: GenerateRequest):
                         "filename": ttf_path.name
                     }, event="complete")
                     
-                    # DB 저장 (주석 처리)
-                    # save_to_database(work_dir, prompt)
+                    # DB 저장
+                    save_to_database(work_dir, prompt)
                     
                 else:
                     yield sse_event({
